@@ -4,18 +4,32 @@ metadata:
   name: bms-app
   labels:
     app: bms
+
 spec:
   replicas: 2
+
   selector:
     matchLabels:
       app: bms
+
   template:
     metadata:
       labels:
         app: bms
+
     spec:
       containers:
       - name: bms-container
-        image: kastrov/bms:latest  # Replace with your Docker image
+        image: sumanraj07/bms:latest
+        imagePullPolicy: Always
+
         ports:
-        - containerPort: 3000  # Replace with the port your app runs on
+        - containerPort: 3000
+
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
