@@ -2,8 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: bms-app
-  labels:
-    app: bms
 
 spec:
   replicas: 2
@@ -21,15 +19,5 @@ spec:
       containers:
       - name: bms-container
         image: sumanraj07/bms:latest
-        imagePullPolicy: Always
-
         ports:
-        - containerPort: 3000
-
-        resources:
-          requests:
-            cpu: "100m"
-            memory: "128Mi"
-          limits:
-            cpu: "500m"
-            memory: "512Mi"
+        - containerPort: 80
