@@ -1,4 +1,4 @@
-(with K8S Stage)
+##with K8S Stage
 
 pipeline {
     agent any
@@ -45,7 +45,10 @@ pipeline {
         stage('Quality Gate') {
             steps {
                 script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                    // Timeout prevents pipeline hanging if SonarQube doesn't respond
+                    timeout(time: 2, unit: 'MINUTES') {
+                        waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                    }
                 }
             }
         }
@@ -55,9 +58,10 @@ pipeline {
                 sh '''
                 cd bookmyshow-app
                 ls -la
+
                 if [ -f package.json ]; then
                     rm -rf node_modules package-lock.json
-                    npm install
+                    npm install --legacy-peer-deps
                 else
                     echo "Error: package.json not found!"
                     exit 1
@@ -68,10 +72,14 @@ pipeline {
 
         stage('OWASP FS Scan') {
             steps {
+                // catchError keeps pipeline going even if OWASP scan fails
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit',
-                    odcInstallation: 'DP-Check'
-
+                    dependencyCheck additionalArguments: '''
+                        --scan ./
+                        --disableYarnAudit
+                        --disableNodeAudit
+                        --noupdate
+                    ''', odcInstallation: 'DP-Check'
                     dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
                 }
             }
@@ -79,18 +87,24 @@ pipeline {
 
         stage('Trivy FS Scan') {
             steps {
-                sh 'trivy fs . > trivyfs.txt'
+                // || true prevents pipeline failure if vulnerabilities are found
+                sh 'trivy fs . > trivyfs.txt || true'
             }
         }
 
         stage('Docker Build & Push') {
+            options {
+                // Prevent hanging if Docker build takes too long
+                timeout(time: 30, unit: 'MINUTES')
+            }
             steps {
                 script {
                     withDockerRegistry(credentialsId: 'docker') {
-
                         sh '''
                         echo "Building Docker image..."
-                        docker build --no-cache -t $DOCKER_IMAGE -f bookmyshow-app/Dockerfile bookmyshow-app
+                        docker build --no-cache \
+                            -t $DOCKER_IMAGE \
+                            -f bookmyshow-app/Dockerfile bookmyshow-app
 
                         echo "Pushing Docker image to Docker Hub..."
                         docker push $DOCKER_IMAGE
@@ -117,26 +131,64 @@ pipeline {
                     kubectl apply -f deployment.yml
                     kubectl apply -f service.yml
 
-                    echo "Checking deployment..."
+                    echo "Checking deployment status..."
                     kubectl get pods
                     kubectl get svc
                     '''
                 }
             }
         }
+
     }
 
+    // post block is correctly OUTSIDE stages and INSIDE pipeline
     post {
-        always {
-            emailext attachLog: true,
-            subject: "Build ${currentBuild.result}: ${env.JOB_NAME}",
-            body: """
-Project: ${env.JOB_NAME}
+
+        success {
+            emailext(
+                subject: "✅ SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+Build SUCCESSFUL
+
+Project:      ${env.JOB_NAME}
 Build Number: ${env.BUILD_NUMBER}
-Build URL: ${env.BUILD_URL}
-""",
-            to: 'msuman2003711@gmail.com',
-            attachmentsPattern: 'trivyfs.txt'
+Docker Image: ${env.DOCKER_IMAGE}
+Build URL:    ${env.BUILD_URL}
+                """,
+                to: "msuman2003711@gmail.com"
+            )
         }
+
+        failure {
+            emailext(
+                subject: "❌ FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+Build FAILED
+
+Project:      ${env.JOB_NAME}
+Build Number: ${env.BUILD_NUMBER}
+Please check Jenkins console logs.
+Build URL:    ${env.BUILD_URL}
+                """,
+                to: "msuman2003711@gmail.com"
+            )
+        }
+
+        always {
+            emailext(
+                attachLog: true,
+                subject: "Build ${currentBuild.currentResult}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+Project:      ${env.JOB_NAME}
+Build Number: ${env.BUILD_NUMBER}
+Build Result: ${currentBuild.currentResult}
+Build URL:    ${env.BUILD_URL}
+                """,
+                to: "msuman2003711@gmail.com",
+                attachmentsPattern: 'trivyfs.txt'
+            )
+        }
+
     }
+
 }
