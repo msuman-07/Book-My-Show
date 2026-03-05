@@ -4,13 +4,10 @@ metadata:
   name: bms-service
   labels:
     app: bms
-
 spec:
   type: LoadBalancer
-
   selector:
     app: bms
-
   ports:
   - name: http
     protocol: TCP
