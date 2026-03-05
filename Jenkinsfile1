@@ -1,4 +1,3 @@
-(without K8S Stage)
 pipeline {
     agent any
     tools {
@@ -16,7 +15,7 @@ pipeline {
         }
         stage('Checkout from Git') {
             steps {
-                git branch: 'main', url: 'https://github.com/KastroVKiran/Book-My-Show.git'
+                git branch: 'main', url: 'https://github.com/msuman-07/Book-My-Show.git'
                 sh 'ls -la'  // Verify files after checkout
             }
         }
